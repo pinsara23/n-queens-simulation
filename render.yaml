@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: n-queens-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: RATE_LIMIT
+        value: 60/minute
+      - key: SOLVER_TIME_LIMIT_SECONDS
+        value: "5"
