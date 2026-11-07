@@ -27,19 +27,31 @@ class BacktrackingSolver(NQueensSolver):
         return solutions
 
     def solve_events(
-        self, *, find_all: bool = False, max_events: int | None = None
+        self,
+        *,
+        find_all: bool = False,
+        max_events: int | None = None,
+        time_limit_seconds: float | None = None,
     ) -> Iterator[SolverEvent]:
         """Yield events while recursively exploring candidate positions."""
         if max_events is not None and (
             not isinstance(max_events, int) or max_events < 0
         ):
             raise ValueError("max_events must be a non-negative integer or None")
+        if time_limit_seconds is not None and time_limit_seconds <= 0:
+            raise ValueError("time_limit_seconds must be positive or None")
 
         self._statistics.reset()
         self._solution = None
         start = perf_counter()
         board = [-1] * self.size
         event_count = 0
+        deadline = (
+            start + time_limit_seconds
+            if time_limit_seconds is not None
+            else None
+        )
+        timed_out = False
 
         def emit(event: SolverEvent) -> Iterator[SolverEvent]:
             nonlocal event_count
@@ -48,6 +60,10 @@ class BacktrackingSolver(NQueensSolver):
                 yield event
 
         def search(row: int) -> Iterator[SolverEvent]:
+            nonlocal timed_out
+            if deadline is not None and perf_counter() >= deadline:
+                timed_out = True
+                return
             self._statistics.recursive_calls += 1
             self._statistics.search_nodes += 1
             self._statistics.maximum_recursion_depth = max(
@@ -69,13 +85,18 @@ class BacktrackingSolver(NQueensSolver):
                 return
 
             for column in range(self.size):
+                if deadline is not None and perf_counter() >= deadline:
+                    timed_out = True
+                    return
                 self._statistics.attempted_placements += 1
-                yield from emit(
-                    SolverEvent(SolverEventType.TRY_POSITION, row, column)
-                )
                 if not self._is_safe(board, row, column):
                     yield from emit(
-                        SolverEvent(SolverEventType.REJECT_POSITION, row, column)
+                        SolverEvent(
+                            SolverEventType.REJECT_POSITION,
+                            row,
+                            column,
+                            reason=self._conflict_reason(board, row, column),
+                        )
                     )
                     continue
 
@@ -90,9 +111,6 @@ class BacktrackingSolver(NQueensSolver):
                 found_solution = self._statistics.solutions_found > before
 
                 board[row] = -1
-                yield from emit(
-                    SolverEvent(SolverEventType.REMOVE_QUEEN, row, column)
-                )
                 if not found_solution:
                     self._statistics.backtracking_operations += 1
                     yield from emit(
@@ -103,12 +121,6 @@ class BacktrackingSolver(NQueensSolver):
 
         yield from search(0)
         self._statistics.elapsed_time = perf_counter() - start
-        yield from emit(
-            SolverEvent(
-                SolverEventType.SEARCH_COMPLETED,
-                row=self.size,
-            )
-        )
 
     @staticmethod
     def _is_safe(board: list[int], row: int, column: int) -> bool:
@@ -120,3 +132,16 @@ class BacktrackingSolver(NQueensSolver):
             if abs(previous_row - row) == abs(previous_column - column):
                 return False
         return True
+
+    @staticmethod
+    def _conflict_reason(
+        board: list[int], row: int, column: int
+    ) -> str | None:
+        """Return the first truthful conflict category for a candidate."""
+        for previous_row in range(row):
+            previous_column = board[previous_row]
+            if previous_column == column:
+                return "column"
+            if abs(previous_row - row) == abs(previous_column - column):
+                return "diagonal"
+        return None

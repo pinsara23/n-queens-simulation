@@ -11,13 +11,15 @@ from typing import Iterator
 class SolverEventType(str, Enum):
     """Events emitted while a solver explores the search space."""
 
-    TRY_POSITION = "try_position"
-    PLACE_QUEEN = "place_queen"
-    REJECT_POSITION = "reject_position"
-    REMOVE_QUEEN = "remove_queen"
+    PLACE_QUEEN = "place"
+    REJECT_POSITION = "reject"
     BACKTRACK = "backtrack"
-    SOLUTION_FOUND = "solution_found"
-    SEARCH_COMPLETED = "search_completed"
+    SOLUTION_FOUND = "solution"
+
+    # Compatibility aliases for callers of the original solver contract.
+    TRY_POSITION = "place"
+    REMOVE_QUEEN = "backtrack"
+    SEARCH_COMPLETED = "solution"
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,7 @@ class SolverEvent:
     row: int
     column: int | None = None
     solution: tuple[int, ...] | None = None
+    reason: str | None = None
 
 
 @dataclass
