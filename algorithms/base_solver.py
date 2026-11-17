@@ -15,6 +15,8 @@ class SolverEventType(str, Enum):
     REJECT_POSITION = "reject"
     BACKTRACK = "backtrack"
     SOLUTION_FOUND = "solution"
+    MOVE_QUEEN = "move"
+    RESTART = "restart"
 
     # Compatibility aliases for callers of the original solver contract.
     TRY_POSITION = "place"
@@ -31,6 +33,9 @@ class SolverEvent:
     column: int | None = None
     solution: tuple[int, ...] | None = None
     reason: str | None = None
+    from_column: int | None = None
+    blocked_row: int | None = None
+    conflicts: int | None = None
 
 
 @dataclass
@@ -44,6 +49,8 @@ class SolverStatistics:
     search_nodes: int = 0
     maximum_recursion_depth: int = 0
     solutions_found: int = 0
+    moves: int = 0
+    restarts: int = 0
     elapsed_time: float = 0.0
 
     def reset(self) -> None:
@@ -62,15 +69,35 @@ class NQueensSolver(ABC):
         self._solution: tuple[int, ...] | None = None
         self._statistics = SolverStatistics()
 
-    @abstractmethod
     def solve(self, *, find_all: bool = False) -> list[tuple[int, ...]]:
-        """Solve the board and return one or all solutions."""
+        """Run the search without retaining visualization events."""
+        return [
+            event.solution
+            for event in self.solve_events(find_all=find_all)
+            if event.event_type is SolverEventType.SOLUTION_FOUND
+            and event.solution is not None
+        ]
 
     @abstractmethod
     def solve_events(
-        self, *, find_all: bool = False, max_events: int | None = None
+        self,
+        *,
+        find_all: bool = False,
+        max_events: int | None = None,
+        time_limit_seconds: float | None = None,
     ) -> Iterator[SolverEvent]:
         """Yield search events without coupling the solver to a GUI."""
+
+    @staticmethod
+    def _validate_limits(
+        max_events: int | None, time_limit_seconds: float | None
+    ) -> None:
+        if max_events is not None and (
+            not isinstance(max_events, int) or max_events < 0
+        ):
+            raise ValueError("max_events must be a non-negative integer or None")
+        if time_limit_seconds is not None and time_limit_seconds <= 0:
+            raise ValueError("time_limit_seconds must be positive or None")
 
     def solve_one(self) -> tuple[int, ...] | None:
         """Return the first solution, if one exists."""

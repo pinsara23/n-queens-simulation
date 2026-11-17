@@ -1,8 +1,15 @@
 # N-Queens Watch Mode API
 
-This project solves N-Queens with the standard recursive backtracking
-algorithm and exposes its real search events through a FastAPI service. A web
-client can play the returned trace as a visualization.
+This project solves N-Queens with several algorithms and exposes their real
+search events through a FastAPI service. A web client can play the returned
+trace as a visualization.
+
+| id | Algorithm | Kind | Max `n` |
+| --- | --- | --- | --- |
+| `backtracking` | Row-by-row backtracking | exact, all solutions | 12 |
+| `bitmask` | Backtracking with bitmask conflict sets (attacked squares are skipped, so no `reject` steps) | exact, all solutions | 12 |
+| `forward_checking` | Forward checking + MRV (rows are filled out of order; dead ends are `reject` steps with `reason: "dead_end"`) | exact, all solutions | 12 |
+| `min_conflicts` | Min-conflicts local search (`place`, then `move`/`restart` steps) | one solution, randomized | 200 |
 
 ## Project layout
 
@@ -12,12 +19,12 @@ app/
   schemas.py              Pydantic v2 request and response models
   api/routes.py           HTTP endpoints and rate limiting
   core/tracing.py         Solver-to-API trace adapter
-algorithms/               Solver abstraction and backtracking implementation
+algorithms/               Solver abstraction and the four solver implementations
 utils/                    Board validation helpers
 tests/                    Solver and API tests
 ```
 
-Only the implemented backtracking algorithm is advertised. The former desktop
+The former desktop
 frontend has been removed; the solver remains usable without a GUI.
 
 ## Local development with Conda
@@ -42,9 +49,10 @@ pytest -q
 ## API
 
 - `GET /health` -> `{"status":"ok"}`
-- `GET /api/algorithms` -> available algorithm metadata
-- `POST /api/trace` -> step-by-step `place`, `reject`, `backtrack`, and
-  `solution` events
+- `GET /api/algorithms` -> available algorithms with `category`, `finds_all`,
+  `max_n`, and `randomized`
+- `POST /api/trace` -> step-by-step `place`, `reject`, `backtrack`, `move`,
+  `restart`, and `solution` events
 - `POST /api/solve` -> solutions up to the requested limit
 - `GET /docs` -> OpenAPI documentation
 
@@ -64,7 +72,8 @@ curl -X POST http://127.0.0.1:8000/api/solve `
   -d '{"n":8,"algorithm":"backtracking","max_solutions":10}'
 ```
 
-`n` must be 4 through 12, `max_steps` is capped at 50,000, and
+`n` must be 4 through the algorithm's `max_n`. Randomized algorithms accept an
+optional integer `seed` for reproducible runs. `max_steps` is capped at 50,000, and
 `max_solutions` is capped at 1,000. Responses report `truncated` when a
 request reaches a configured limit.
 
