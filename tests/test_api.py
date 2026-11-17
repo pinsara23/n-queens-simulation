@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -67,3 +68,47 @@ def test_time_limit_behavior(monkeypatch) -> None:
     response = client.post("/api/trace", json={"n": 12, "max_steps": 50000})
     assert response.status_code == 200
     assert response.json()["truncated"] is True
+
+
+def test_algorithms_lists_metadata() -> None:
+    algorithms = {a["id"]: a for a in client.get("/api/algorithms").json()["algorithms"]}
+    assert set(algorithms) == {"backtracking", "bitmask", "forward_checking", "min_conflicts"}
+    assert algorithms["min_conflicts"]["finds_all"] is False
+    assert algorithms["min_conflicts"]["max_n"] > algorithms["backtracking"]["max_n"]
+
+
+def test_algorithm_ids_match_registry() -> None:
+    from typing import get_args
+
+    from app.core.registry import ALGORITHMS
+    from app.schemas import AlgorithmId
+
+    assert set(get_args(AlgorithmId)) == set(ALGORITHMS)
+
+
+@pytest.mark.parametrize("algorithm", ["bitmask", "forward_checking", "min_conflicts"])
+def test_trace_each_algorithm(algorithm) -> None:
+    response = client.post(
+        "/api/trace", json={"n": 8, "algorithm": algorithm, "seed": 1}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["algorithm"] == algorithm
+    solutions = [s["board"] for s in body["steps"] if s["type"] == "solution"]
+    assert solutions and is_valid_solution(solutions[0], 8)
+    stats = body["stats"]
+    assert stats["placements"] == sum(s["type"] == "place" for s in body["steps"])
+    assert stats["moves"] == sum(s["type"] == "move" for s in body["steps"])
+
+
+def test_solve_counts_with_bitmask() -> None:
+    response = client.post(
+        "/api/solve", json={"n": 8, "algorithm": "bitmask", "max_solutions": 1000}
+    )
+    assert response.json()["count"] == 92
+
+
+def test_per_algorithm_size_limit() -> None:
+    assert client.post("/api/trace", json={"n": 100, "algorithm": "min_conflicts"}).status_code == 200
+    assert client.post("/api/trace", json={"n": 13, "algorithm": "backtracking"}).status_code == 422
+    assert client.post("/api/trace", json={"n": 201, "algorithm": "min_conflicts"}).status_code == 422

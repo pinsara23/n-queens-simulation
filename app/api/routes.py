@@ -24,7 +24,7 @@ limiter = Limiter(key_func=get_remote_address)
 def algorithms(request: Request) -> AlgorithmResponse:
     return AlgorithmResponse(
         algorithms=[
-            {"id": key, "name": value["name"], "description": value["description"]}
+            {"id": key, **{k: v for k, v in value.items() if k != "solver"}}
             for key, value in ALGORITHMS.items()
         ]
     )
@@ -40,10 +40,11 @@ def trace(request: Request, payload: TraceRequest) -> TraceResponse:
         payload.algorithm,
         payload.max_steps,
         payload.stop_after_first_solution,
+        payload.seed,
     )
 
 
 @router.post("/solve", response_model=SolveResponse)
 @limiter.limit(rate_limit())
 def solve_endpoint(request: Request, payload: SolveRequest) -> SolveResponse:
-    return solve(payload.n, payload.algorithm, payload.max_solutions)
+    return solve(payload.n, payload.algorithm, payload.max_solutions, payload.seed)

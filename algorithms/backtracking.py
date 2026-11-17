@@ -15,17 +15,6 @@ from .base_solver import (
 class BacktrackingSolver(NQueensSolver):
     """Place one queen per row and scan prior rows for conflicts."""
 
-    def solve(
-        self, *, find_all: bool = False
-    ) -> list[tuple[int, ...]]:
-        """Run the search without retaining visualization events."""
-        solutions: list[tuple[int, ...]] = []
-        for event in self.solve_events(find_all=find_all):
-            if event.event_type is SolverEventType.SOLUTION_FOUND:
-                if event.solution is not None:
-                    solutions.append(event.solution)
-        return solutions
-
     def solve_events(
         self,
         *,

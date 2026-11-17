@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from algorithms.backtracking import BacktrackingSolver
-from algorithms.base_solver import SolverEventType
+from algorithms.base_solver import NQueensSolver, SolverEventType
 
 from .config import solver_time_limit_seconds
-from .registry import ALGORITHMS
+from .registry import create_solver
 from app.schemas import SolveResponse, SolverStats, TraceResponse, TraceStep
 
 
-def _stats(solver: BacktrackingSolver, elapsed_ms: float) -> SolverStats:
+def _stats(solver: NQueensSolver, elapsed_ms: float) -> SolverStats:
     values = solver.get_statistics()
     return SolverStats(
         nodes_explored=values.search_nodes,
@@ -20,6 +19,8 @@ def _stats(solver: BacktrackingSolver, elapsed_ms: float) -> SolverStats:
         rejections=values.attempted_placements - values.valid_placements,
         backtracks=values.backtracking_operations,
         solutions_found=values.solutions_found,
+        moves=values.moves,
+        restarts=values.restarts,
         elapsed_ms=round(elapsed_ms, 3),
     )
 
@@ -29,8 +30,9 @@ def trace_solution(
     algorithm: str,
     max_steps: int,
     stop_after_first_solution: bool,
+    seed: int | None = None,
 ) -> TraceResponse:
-    solver = ALGORITHMS[algorithm]["solver"](n)
+    solver = create_solver(algorithm, n, seed)
     steps: list[TraceStep] = []
     started = perf_counter()
     truncated = False
@@ -51,6 +53,7 @@ def trace_solution(
                     row=event.row,
                     col=event.column,
                     reason=event.reason,
+                    blocked_row=event.blocked_row,
                 )
             elif event.event_type is SolverEventType.BACKTRACK:
                 step = TraceStep(
@@ -59,6 +62,17 @@ def trace_solution(
                     row=event.row,
                     col=event.column,
                 )
+            elif event.event_type is SolverEventType.MOVE_QUEEN:
+                step = TraceStep(
+                    i=len(steps),
+                    type="move",
+                    row=event.row,
+                    col=event.column,
+                    from_col=event.from_column,
+                    conflicts=event.conflicts,
+                )
+            elif event.event_type is SolverEventType.RESTART:
+                step = TraceStep(i=len(steps), type="restart")
             elif event.event_type is SolverEventType.SOLUTION_FOUND:
                 step = TraceStep(
                     i=len(steps),
@@ -85,9 +99,9 @@ def trace_solution(
 
 
 def solve(
-    n: int, algorithm: str, max_solutions: int
+    n: int, algorithm: str, max_solutions: int, seed: int | None = None
 ) -> SolveResponse:
-    solver = ALGORITHMS[algorithm]["solver"](n)
+    solver = create_solver(algorithm, n, seed)
     solutions: list[list[int]] = []
     started = perf_counter()
     truncated = False
